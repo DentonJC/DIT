@@ -1,20 +1,24 @@
-import numpy as np
+""" https://docs.dgl.ai/en/0.6.x/guide/training-edge.html """
+
 import dgl
-import torch
+import dgl.function as fn
 import dgl.nn as dglnn
+import networkx as nx
+import numpy as np
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import dgl.function as fn
-import networkx as nx
 
 
 class SAGE(nn.Module):
     def __init__(self, in_feats, hid_feats, out_feats):
         super().__init__()
         self.conv1 = dglnn.SAGEConv(
-            in_feats=in_feats, out_feats=hid_feats, aggregator_type='mean')
+            in_feats=in_feats, out_feats=hid_feats, aggregator_type="mean"
+        )
         self.conv2 = dglnn.SAGEConv(
-            in_feats=hid_feats, out_feats=out_feats, aggregator_type='mean')
+            in_feats=hid_feats, out_feats=out_feats, aggregator_type="mean"
+        )
 
     def forward(self, graph, inputs):
         # inputs are features of nodes
@@ -29,9 +33,9 @@ class DotProductPredictor(nn.Module):
         # h contains the node representations computed from the GNN defined
         # in the node classification section (Section 5.1).
         with graph.local_scope():
-            graph.ndata['h'] = h
-            graph.apply_edges(fn.u_dot_v('h', 'h', 'score'))
-            return graph.edata['score']
+            graph.ndata["h"] = h
+            graph.apply_edges(fn.u_dot_v("h", "h", "score"))
+            return graph.edata["score"]
 
 
 class MLPPredictor(nn.Module):
@@ -40,24 +44,26 @@ class MLPPredictor(nn.Module):
         self.W = nn.Linear(in_features * 2, out_classes)
 
     def apply_edges(self, edges):
-        h_u = edges.src['h']
-        h_v = edges.dst['h']
+        h_u = edges.src["h"]
+        h_v = edges.dst["h"]
         score = self.W(torch.cat([h_u, h_v], 1))
-        return {'score': score}
+        return {"score": score}
 
     def forward(self, graph, h):
         # h contains the node representations computed from the GNN defined
         # in the node classification section (Section 5.1).
         with graph.local_scope():
-            graph.ndata['h'] = h
+            graph.ndata["h"] = h
             graph.apply_edges(self.apply_edges)
-            return graph.edata['score']
+            return graph.edata["score"]
+
 
 class Model(nn.Module):
     def __init__(self, in_features, hidden_features, out_features):
         super().__init__()
         self.sage = SAGE(in_features, hidden_features, out_features)
         self.pred = DotProductPredictor()
+
     def forward(self, g, x):
         h = self.sage(g, x)
         return self.pred(g, h)
@@ -66,7 +72,7 @@ class Model(nn.Module):
 def build_graph():
     # All 78 edges are stored in two numpy arrays. One for source endpoints
     # while the other for destination endpoints.
-    src = np.array([1, 2, 2, 3, 3, 3, 4, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 9, 10, 10,
+     src = np.array([1, 2, 2, 3, 3, 3, 4, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 9, 10, 10,
         10, 11, 12, 12, 13, 13, 13, 13, 16, 16, 17, 17, 19, 19, 21, 21,
         25, 25, 27, 27, 27, 28, 29, 29, 30, 30, 31, 31, 31, 31, 32, 32,
         32, 32, 32, 32, 32, 32, 32, 32, 32, 33, 33, 33, 33, 33, 33, 33,
@@ -81,23 +87,23 @@ def build_graph():
     v = np.concatenate([dst, src])
     # Construct a DGLGraph
     return dgl.DGLGraph((u, v))
-    
+
 
 G = build_graph()
 nx_G = G.to_networkx().to_undirected()
 
 # synthetic node and edge features, as well as edge labels
-G.ndata['feature'] = torch.randn(34, 10)
-G.edata['feature'] = torch.randn(156, 10)
-G.edata['label'] = torch.randn(156)
+G.ndata["feature"] = torch.randn(34, 10)
+G.edata["feature"] = torch.randn(156, 10)
+G.edata["label"] = torch.randn(156)
 
 
 # synthetic train-validation-test splits
-G.edata['train_mask'] = torch.zeros(156, dtype=torch.bool).bernoulli(0.6)
+G.edata["train_mask"] = torch.zeros(156, dtype=torch.bool).bernoulli(0.6)
 
-node_features = G.ndata['feature']
-edge_label = G.edata['label']
-train_mask = G.edata['train_mask']
+node_features = G.ndata["feature"]
+edge_label = G.edata["label"]
+train_mask = G.edata["train_mask"]
 
 model = Model(10, 20, 5)
 opt = torch.optim.Adam(model.parameters())
@@ -109,39 +115,4 @@ for epoch in range(50):
     opt.zero_grad()
     loss.backward()
     opt.step()
-    print('Epoch %d | Loss: %.4f' % (epoch, loss.item()))
-  
-"""      
-import matplotlib.animation as animation
-import matplotlib.pyplot as plt
-
-#pos = nx.kamada_kawai_layout(nx_G)
-#nx.draw(nx_G, pos, with_labels=True, node_color=[[.7, .7, .7]])
-#plt.show()
-
-def draw(i):
-    cls1color = '#00FFFF'
-    cls2color = '#FF00FF'
-    pos = {}
-    colors = []
-    for v in range(34):
-        pos[v] = all_logits[i][v].numpy()
-        cls = pos[v].argmax()
-        colors.append(cls1color if cls else cls2color)
-    ax.cla()
-    ax.axis('off')
-    ax.set_title('Epoch: %d' % i)
-    nx.draw_networkx(nx_G.to_undirected(), nx.kamada_kawai_layout(nx_G), node_color=colors, with_labels=True, node_size=300, ax=ax)
-
-fig = plt.figure(dpi=150)
-fig.clf()
-ax = fig.subplots()
-draw(49)  # draw the prediction of the first epoch
-plt.show()
-plt.close()
-"""
-#ani = animation.FuncAnimation(fig, draw, frames=len(all_logits), interval=200)
-#plt.show()
-#FFwriter = animation.FFMpegWriter()
-#lin_ani.save('animation.mp4', writer = FFwriter, fps=10)
-
+    print("Epoch %d | Loss: %.4f" % (epoch, loss.item()))
