@@ -66,7 +66,7 @@ Continue modifying the gnn.py code:
   - G.edata["train_mask"] - train-test split
 
 ## Citing
-A. Krutsylo and Md. A. Jahin (2021) DIT [Source code]. https://github.com/DentonJC/DIT. 
+A. Krutsylo and Md. Abrar Jahin (2021) DIT [Source code](https://github.com/DentonJC/DIT). 
 
 ## References
 - https://www.teconer.fi/en/surface-condition-friction-measurements/#RCM411
